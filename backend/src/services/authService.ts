@@ -1,0 +1,104 @@
+import bcrypt from 'bcryptjs';
+import { prisma } from '../utils/prisma.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
+import { generateToken } from '../utils/crypto.js';
+import { AppError } from '../middleware/errorHandler.js';
+import { env } from '../utils/env.js';
+
+export async function registerResident(email: string, password: string, name: string) {
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) throw new AppError(409, 'Email already registered');
+
+  const password_hash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
+  const verify_token = generateToken();
+  const verify_token_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      password_hash,
+      name,
+      user_type: 'resident' as string,
+      is_verified: false,
+      verify_token,
+      verify_token_expires,
+    },
+  });
+
+  console.log('\n========================================');
+  console.log('✅ USER REGISTERED');
+  console.log('📧 VERIFICATION LINK (paste in browser):');
+  console.log(`http://localhost:5173/verify-email?token=${verify_token}`);
+  console.log('========================================\n');
+
+  return { id: user.id, email: user.email, name: user.name };
+}
+
+export async function verifyEmail(token: string) {
+  const user = await prisma.user.findFirst({
+    where: {
+      verify_token: token,
+      verify_token_expires: { gt: new Date() },
+    },
+  });
+
+  if (!user) throw new AppError(400, 'Invalid or expired verification token');
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { is_verified: true, verify_token: null, verify_token_expires: null },
+  });
+
+  return { message: 'Email verified successfully' };
+}
+
+export async function resendVerification(email: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new AppError(404, 'No account found with that email');
+  if (user.is_verified) throw new AppError(400, 'Email already verified');
+
+  const verify_token = generateToken();
+  const verify_token_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { verify_token, verify_token_expires },
+  });
+
+  console.log(`[EMAIL] Resend verification for ${email}`);
+  console.log(`[EMAIL] Link: ${env.FRONTEND_URL}/verify-email?token=${verify_token}`);
+
+  return { message: 'Verification email resent' };
+}
+
+export async function login(email: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new AppError(401, 'Invalid email or password');
+
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) throw new AppError(401, 'Invalid email or password');
+
+  if (!user.is_verified) throw new AppError(403, 'Please verify your email before logging in');
+
+  const payload = { userId: user.id, email: user.email, userType: user.user_type };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+
+  return {
+    accessToken,
+    refreshToken,
+    user: { id: user.id, email: user.email, name: user.name, userType: user.user_type },
+  };
+}
+
+export async function refreshToken(token: string) {
+  const payload = verifyRefreshToken(token);
+  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+  if (!user) throw new AppError(401, 'User not found');
+
+  const newPayload = { userId: user.id, email: user.email, userType: user.user_type };
+  const accessToken = signAccessToken(newPayload);
+  const newRefreshToken = signRefreshToken(newPayload);
+
+  return { accessToken, refreshToken: newRefreshToken };
+}

@@ -1,0 +1,158 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// user_type: resident | rep_staff | admin
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password_hash String
+  name          String
+  phone         String?
+  user_type     String
+  is_verified   Boolean   @default(false)
+  verify_token  String?
+  verify_token_expires DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  complaints        Complaint[]
+  complaint_updates ComplaintUpdate[]
+  staff_account     StaffAccount?
+
+  @@index([email])
+  @@index([user_type])
+}
+
+model Address {
+  id                    String   @id @default(uuid())
+  street_address        String
+  city                  String
+  state                 String
+  zip_code              String
+  latitude              Float
+  longitude             Float
+  city_council_district Int?
+  state_house_district  Int?
+  state_senate_district Int?
+  police_district       Int?
+  created_at            DateTime @default(now())
+
+  complaints Complaint[]
+
+  @@unique([street_address, city, state, zip_code])
+  @@index([city, state])
+  @@index([city_council_district])
+}
+
+// title: city_council | state_house | state_senate
+model ElectedOfficial {
+  id                      String   @id @default(uuid())
+  name                    String
+  title                   String
+  district                Int
+  city                    String
+  state                   String
+  email                   String?
+  office_phone            String?
+  office_address          String?
+  website                 String?
+  party                   String?
+  contact_verified        Boolean  @default(false)
+  verified_contact_person String?
+  verified_contact_email  String?
+  verified_contact_phone  String?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  staff_accounts StaffAccount[]
+
+  @@index([title, district, city, state])
+  @@index([contact_verified])
+}
+
+model ComplaintType {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  description         String?
+  category            String
+  icon_emoji          String?
+  primary_department  String
+  department_email    String?
+  department_phone    String?
+  avg_resolution_days Int?
+  created_at          DateTime @default(now())
+
+  complaints Complaint[]
+}
+
+model Complaint {
+  id                String        @id @default(uuid())
+  user_id           String
+  user              User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  complaint_type_id String
+  complaint_type    ComplaintType @relation(fields: [complaint_type_id], references: [id])
+  address_id        String
+  address           Address       @relation(fields: [address_id], references: [id])
+
+  title               String
+  description         String
+  severity            String   @default("moderate")
+  status              String   @default("submitted")
+  assigned_department String?
+
+  case_number         String   @unique
+  public_tracking_url String?
+  is_public           Boolean  @default(true)
+
+  dept_notified_at DateTime?
+  reps_notified_at DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  resolved_at      DateTime?
+
+  updates ComplaintUpdate[]
+
+  @@index([user_id])
+  @@index([status])
+  @@index([case_number])
+  @@index([address_id])
+  @@index([created_at])
+}
+
+model ComplaintUpdate {
+  id           String    @id @default(uuid())
+  complaint_id String
+  complaint    Complaint @relation(fields: [complaint_id], references: [id], onDelete: Cascade)
+  user_id      String
+  user         User      @relation(fields: [user_id], references: [id])
+
+  update_type     String
+  message         String
+  proof_image_url String?
+  visibility      String   @default("public")
+  created_at      DateTime @default(now())
+
+  @@index([complaint_id])
+  @@index([user_id])
+}
+
+model StaffAccount {
+  id          String           @id @default(uuid())
+  user_id     String           @unique
+  user        User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  official_id String?
+  official    ElectedOfficial? @relation(fields: [official_id], references: [id])
+
+  department_name            String?
+  role                       String?
+  email_verified             Boolean   @default(false)
+  verification_token         String?
+  verification_token_expires DateTime?
+  created_at                 DateTime  @default(now())
+}

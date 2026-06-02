@@ -1,0 +1,58 @@
+{
+  "complaint_types": [
+    {
+      "name": "Pothole",
+      "description": "Holes or cracks in the road surface",
+      "category": "street_infrastructure",
+      "icon_emoji": "🕳️",
+      "primary_department": "Department of Streets",
+      "department_email": "pothole-reports@phila.gov",
+      "avg_resolution_days": 7
+    },
+    {
+      "name": "Graffiti",
+      "description": "Unwanted graffiti or vandalism",
+      "category": "cleanliness",
+      "icon_emoji": "🎨",
+      "primary_department": "Office of Clean & Green",
+      "department_email": "graffiti@phila.gov",
+      "avg_resolution_days": 10
+    },
+    {
+      "name": "Illegal Dumping",
+      "description": "Trash or debris illegally disposed",
+      "category": "cleanliness",
+      "icon_emoji": "🚛",
+      "primary_department": "Office of Clean & Green",
+      "department_email": "dumping@phila.gov",
+      "avg_resolution_days": 5
+    },
+    {
+      "name": "Abandoned Vehicle",
+      "description": "Abandoned or junked vehicle blocking street",
+      "category": "safety",
+      "icon_emoji": "🚗",
+      "primary_department": "Philadelphia Police Department",
+      "department_email": "abandoned-vehicles@phila.gov",
+      "avg_resolution_days": 14
+    },
+    {
+      "name": "Block Party Permit",
+      "description": "Request for block party/event permit",
+      "category": "permits",
+      "icon_emoji": "🎉",
+      "primary_department": "Department of Licenses & Inspections",
+      "department_email": "permits@phila.gov",
+      "avg_resolution_days": 21
+    },
+    {
+      "name": "Building Code Violation",
+      "description": "Unsafe or code-violating building",
+      "category": "property",
+      "icon_emoji": "🏢",
+      "primary_department": "Department of Licenses & Inspections",
+      "department_email": "violations@phila.gov",
+      "avg_resolution_days": 30
+    }
+  ]
+}
