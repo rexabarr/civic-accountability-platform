@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import * as authService from '../services/authService.js';
 import { AppError } from '../middleware/errorHandler.js';
+import type { AuthRequest } from '../middleware/auth.js';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -74,5 +75,40 @@ export async function resendVerification(req: Request, res: Response) {
   const { email } = req.body;
   if (!email) throw new AppError(400, 'Email required');
   const result = await authService.resendVerification(email);
+  res.json(result);
+}
+
+export async function forgotPassword(req: Request, res: Response) {
+  const { email } = req.body;
+  if (!email || typeof email !== 'string') throw new AppError(400, 'Email required');
+  const result = await authService.forgotPassword(email.toLowerCase().trim());
+  res.json(result);
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  const schema = z.object({
+    token: z.string().min(1, 'Token required'),
+    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(400, parsed.error.errors.map((e) => e.message).join(', '));
+  }
+  const result = await authService.resetPassword(parsed.data.token, parsed.data.newPassword);
+  res.json(result);
+}
+
+export async function updateProfile(req: AuthRequest, res: Response) {
+  const userId = req.user!.userId;
+  const schema = z.object({
+    name: z.string().min(2).optional(),
+    currentPassword: z.string().optional(),
+    newPassword: z.string().min(8).optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(400, parsed.error.errors.map((e) => e.message).join(', '));
+  }
+  const result = await authService.updateProfile(userId, parsed.data);
   res.json(result);
 }

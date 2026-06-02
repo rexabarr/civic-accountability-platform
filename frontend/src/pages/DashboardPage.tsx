@@ -41,6 +41,11 @@ export default function DashboardPage() {
             </Link>
           )}
           <span className="text-sm text-blue-200 hidden sm:block">Hello, {user?.name}</span>
+          {user?.userType === 'resident' && (
+            <Link to="/settings" className="text-blue-300 text-sm hover:text-white hidden sm:block">
+              ⚙ Settings
+            </Link>
+          )}
           <button onClick={logout} className="btn-secondary text-sm py-1 px-3">
             Sign out
           </button>

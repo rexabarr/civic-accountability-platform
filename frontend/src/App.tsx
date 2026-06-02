@@ -11,6 +11,9 @@ import LeaderboardPage from './pages/LeaderboardPage';
 import StaffRegisterPage from './pages/StaffRegisterPage';
 import StaffDashboardPage from './pages/StaffDashboardPage';
 import AdminPage from './pages/AdminPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import SettingsPage from './pages/SettingsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -75,6 +78,16 @@ export default function App() {
       <Route path="/track" element={<TrackComplaintPage />} />
       <Route path="/track/:caseNumber" element={<TrackComplaintPage />} />
       <Route path="/leaderboard" element={<LeaderboardPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

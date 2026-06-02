@@ -2,7 +2,7 @@ import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { generateCaseNumber } from '../utils/caseNumber.js';
 import { geocodeAndGetDistricts } from './geocodingService.js';
-import { sendComplaintNotifications } from './emailService.js';
+import { sendComplaintNotifications, sendDisputeNotification, sendAutoResolvedNotification } from './emailService.js';
 import { env } from '../utils/env.js';
 
 const VERIFICATION_DAYS = 7;      // days before pending_verification auto-closes
@@ -176,7 +176,10 @@ export async function submitComplaint(input: SubmitComplaintInput) {
 
 /** Auto-advance pending_verification past its deadline to resolved. */
 async function maybeAutoResolve(complaintId: string) {
-  const complaint = await prisma.complaint.findUnique({ where: { id: complaintId } });
+  const complaint = await prisma.complaint.findUnique({
+    where: { id: complaintId },
+    include: { complaint_type: { select: { name: true } } },
+  });
   if (
     complaint?.status === 'pending_verification' &&
     complaint.verification_deadline &&
@@ -195,6 +198,21 @@ async function maybeAutoResolve(complaintId: string) {
         visibility: 'public',
       },
     });
+
+    // Notify the original complainant that their complaint was auto-resolved
+    const user = await prisma.user.findUnique({
+      where: { id: complaint.user_id },
+      select: { name: true, email: true },
+    });
+    if (user?.email) {
+      sendAutoResolvedNotification({
+        residentName: user.name,
+        residentEmail: user.email,
+        caseNumber: complaint.case_number,
+        complaintTitle: complaint.title,
+        trackingUrl: `${env.FRONTEND_URL}/track/${complaint.case_number}`,
+      });
+    }
   }
 }
 
@@ -258,6 +276,52 @@ export async function disputeResolution(complaintId: string, userId: string) {
       visibility: 'public',
     },
   });
+
+  // Notify all approved staff linked to officials for this complaint's district
+  const fullComplaint = await prisma.complaint.findUnique({
+    where: { id: complaintId },
+    include: {
+      address: true,
+      complaint_type: { select: { name: true } },
+    },
+  });
+
+  if (fullComplaint?.address) {
+    const addr = fullComplaint.address;
+    // Find all officials whose district matches any of the address's districts
+    const officials = await prisma.electedOfficial.findMany({
+      where: {
+        city: 'Philadelphia',
+        OR: [
+          { title: 'city_council', district: addr.city_council_district ?? -1 },
+          { title: 'state_house',  district: addr.state_house_district  ?? -1 },
+          { title: 'state_senate', district: addr.state_senate_district ?? -1 },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (officials.length > 0) {
+      const officialIds = officials.map((o) => o.id);
+      const staffAccounts = await prisma.staffAccount.findMany({
+        where: { official_id: { in: officialIds }, email_verified: true },
+        include: { user: { select: { name: true, email: true } } },
+      });
+
+      const trackingUrl = `${env.FRONTEND_URL}/track/${fullComplaint.case_number}`;
+      for (const staff of staffAccounts) {
+        sendDisputeNotification({
+          staffName: staff.user.name,
+          staffEmail: staff.user.email,
+          caseNumber: fullComplaint.case_number,
+          complaintTitle: fullComplaint.title,
+          complaintType: fullComplaint.complaint_type.name,
+          address: `${addr.street_address}, ${addr.city}, ${addr.state}`,
+          trackingUrl,
+        });
+      }
+    }
+  }
 
   return { message: 'Dispute filed. Complaint has been reopened.' };
 }

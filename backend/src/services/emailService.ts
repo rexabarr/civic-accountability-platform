@@ -1,3 +1,27 @@
+interface PasswordResetPayload {
+  name: string;
+  email: string;
+  resetUrl: string;
+}
+
+interface DisputeNotificationPayload {
+  staffName: string;
+  staffEmail: string;
+  caseNumber: string;
+  complaintTitle: string;
+  complaintType: string;
+  address: string;
+  trackingUrl: string;
+}
+
+interface AutoResolvedNotificationPayload {
+  residentName: string;
+  residentEmail: string;
+  caseNumber: string;
+  complaintTitle: string;
+  trackingUrl: string;
+}
+
 interface VerificationNotificationPayload {
   caseNumber: string;
   complaintTitle: string;
@@ -148,6 +172,151 @@ export function sendVerificationNotification(payload: VerificationNotificationPa
   console.log(`  Track:    ${payload.trackingUrl}`);
   console.log(divider);
   console.log(`✅  Resident notified — dispute window open\n`);
+}
+
+function passwordResetHtml(p: PasswordResetPayload): string {
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:#1e3a5f;color:white;padding:20px 24px;border-radius:8px 8px 0 0">
+        <h2 style="margin:0">Civic Accountability Platform</h2>
+        <p style="margin:4px 0 0;opacity:.8">Password Reset Request</p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+        <p>Hi ${p.name},</p>
+        <p>We received a request to reset your password. Click the button below to set a new one. This link expires in <strong>1 hour</strong>.</p>
+        <p style="text-align:center;margin-top:24px">
+          <a href="${p.resetUrl}" style="background:#1e3a5f;color:white;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">Reset My Password</a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb">
+          If you didn't request a password reset, you can safely ignore this email — your password will not change.<br>
+          This link will expire after 1 hour.
+        </p>
+        <p style="color:#6b7280;font-size:12px;text-align:center;margin-top:24px">
+          Civic Accountability Platform · Philadelphia, PA<br>
+          This is an automated message. Do not reply to this email.
+        </p>
+      </div>
+    </div>`;
+}
+
+function disputeHtml(p: DisputeNotificationPayload): string {
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:#b45309;color:white;padding:20px 24px;border-radius:8px 8px 0 0">
+        <h2 style="margin:0">Civic Accountability Platform</h2>
+        <p style="margin:4px 0 0;opacity:.8">Dispute Filed — ${p.caseNumber}</p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+        <p>Hi ${p.staffName},</p>
+        <p>A resident has disputed the resolution you marked on complaint <strong>${p.caseNumber}</strong>. The complaint has been <strong>reopened</strong> and requires further action.</p>
+        <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:16px;margin:16px 0">
+          <p style="margin:0;font-weight:700;color:#c2410c">🚫 Resolution Disputed — Action Required</p>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr><td style="padding:8px;background:#f9fafb;font-weight:600;width:140px">Case #</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${p.caseNumber}</td></tr>
+          <tr><td style="padding:8px;background:#f9fafb;font-weight:600">Complaint</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${p.complaintTitle}</td></tr>
+          <tr><td style="padding:8px;background:#f9fafb;font-weight:600">Type</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${p.complaintType}</td></tr>
+          <tr><td style="padding:8px;background:#f9fafb;font-weight:600">Address</td><td style="padding:8px">${p.address}</td></tr>
+        </table>
+        <p style="text-align:center;margin-top:24px">
+          <a href="${p.trackingUrl}" style="background:#b45309;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">View Complaint</a>
+        </p>
+        <p style="color:#6b7280;font-size:12px;text-align:center;margin-top:24px">
+          Civic Accountability Platform · Philadelphia, PA<br>
+          Response time is tracked publicly.
+        </p>
+      </div>
+    </div>`;
+}
+
+function autoResolvedHtml(p: AutoResolvedNotificationPayload): string {
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:#166534;color:white;padding:20px 24px;border-radius:8px 8px 0 0">
+        <h2 style="margin:0">Civic Accountability Platform</h2>
+        <p style="margin:4px 0 0;opacity:.8">Complaint Resolved — ${p.caseNumber}</p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+        <p>Hi ${p.residentName},</p>
+        <p>Your complaint <strong>${p.caseNumber}</strong> has been officially marked as <strong>resolved</strong>.</p>
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin:16px 0">
+          <p style="margin:0;color:#166534">✓ No dispute was filed within the 7-day verification window. This complaint is now closed.</p>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr><td style="padding:8px;background:#f9fafb;font-weight:600;width:140px">Case #</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${p.caseNumber}</td></tr>
+          <tr><td style="padding:8px;background:#f9fafb;font-weight:600">Complaint</td><td style="padding:8px">${p.complaintTitle}</td></tr>
+        </table>
+        <p style="text-align:center;margin-top:24px">
+          <a href="${p.trackingUrl}" style="background:#166534;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">View Full History</a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb">
+          If you believe this was closed in error, you may submit a new complaint at the same address.
+          If a different resident reports the same issue within 60 days, the complaint will automatically reopen.
+        </p>
+        <p style="color:#6b7280;font-size:12px;text-align:center;margin-top:24px">
+          Civic Accountability Platform · Philadelphia, PA<br>
+          This is an automated message. Do not reply to this email.
+        </p>
+      </div>
+    </div>`;
+}
+
+export function sendPasswordResetEmail(payload: PasswordResetPayload): void {
+  const subject = 'Reset your Civic Accountability Platform password';
+  if (SENDGRID_KEY) {
+    sendViaSendGrid(payload.email, subject, passwordResetHtml(payload))
+      .then(() => console.log(`[email] password reset sent to ${payload.email}`))
+      .catch((err) => console.error(`[email] failed to send password reset:`, err.message));
+    return;
+  }
+  const divider = '═'.repeat(50);
+  console.log(`\n${divider}`);
+  console.log(`🔑  PASSWORD RESET — ${payload.email}`);
+  console.log(divider);
+  console.log(`  To:      ${payload.name} <${payload.email}>`);
+  console.log(`  Subject: ${subject}`);
+  console.log(`  Link:    ${payload.resetUrl}`);
+  console.log(`  Expires: 1 hour`);
+  console.log(`${divider}\n`);
+}
+
+export function sendDisputeNotification(payload: DisputeNotificationPayload): void {
+  const subject = `Dispute Filed — Complaint ${payload.caseNumber} Has Been Reopened`;
+  if (SENDGRID_KEY) {
+    sendViaSendGrid(payload.staffEmail, subject, disputeHtml(payload))
+      .then(() => console.log(`[email] dispute notice sent to ${payload.staffEmail}`))
+      .catch((err) => console.error(`[email] failed to send dispute notice:`, err.message));
+    return;
+  }
+  const divider = '═'.repeat(50);
+  console.log(`\n${divider}`);
+  console.log(`🚫  DISPUTE FILED — ${payload.caseNumber}`);
+  console.log(divider);
+  console.log(`  To:       ${payload.staffName} <${payload.staffEmail}>`);
+  console.log(`  Subject:  ${subject}`);
+  console.log(`  Case:     ${payload.complaintTitle}`);
+  console.log(`  Address:  ${payload.address}`);
+  console.log(`  Track:    ${payload.trackingUrl}`);
+  console.log(`${divider}\n`);
+}
+
+export function sendAutoResolvedNotification(payload: AutoResolvedNotificationPayload): void {
+  const subject = `Your complaint ${payload.caseNumber} has been resolved`;
+  if (SENDGRID_KEY) {
+    sendViaSendGrid(payload.residentEmail, subject, autoResolvedHtml(payload))
+      .then(() => console.log(`[email] auto-resolved notice sent to ${payload.residentEmail}`))
+      .catch((err) => console.error(`[email] failed to send auto-resolved notice:`, err.message));
+    return;
+  }
+  const divider = '═'.repeat(50);
+  console.log(`\n${divider}`);
+  console.log(`✅  AUTO-RESOLVED — ${payload.caseNumber}`);
+  console.log(divider);
+  console.log(`  To:       ${payload.residentName} <${payload.residentEmail}>`);
+  console.log(`  Subject:  ${subject}`);
+  console.log(`  Case:     ${payload.complaintTitle}`);
+  console.log(`  Track:    ${payload.trackingUrl}`);
+  console.log(`${divider}\n`);
 }
 
 export function sendComplaintNotifications(payload: ComplaintNotificationPayload): void {

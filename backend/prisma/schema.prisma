@@ -18,6 +18,8 @@ model User {
   is_verified   Boolean   @default(false)
   verify_token  String?
   verify_token_expires DateTime?
+  reset_token   String?
+  reset_token_expires  DateTime?
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
 
