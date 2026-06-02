@@ -1,25 +1,37 @@
+# Dependencies
 node_modules/
 .pnp
 .pnp.js
-/coverage
-.vitest/
-/dist
-/build
+
+# Build output — never commit compiled/bundled files
+dist/
+build/
 *.tsbuildinfo
-.DS_Store
+
+# Test coverage
+coverage/
+.vitest/
+
+# Environment files — NEVER commit secrets
 .env
 .env.local
 .env.*.local
+
+# Database files — never commit real data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 *.swp
 .project
-Thumbs.db
-prisma/*.db
-prisma/*.db-journal
-.venv/
-venv/
-env/
+
+# Deployment platform artifacts
 .vercel/
 .next/
 .yarn/cache
