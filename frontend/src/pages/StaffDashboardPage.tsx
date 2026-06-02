@@ -14,16 +14,16 @@ const UPDATE_TYPES = [
   { value: 'response', label: 'Official Response' },
   { value: 'in_progress', label: 'Work In Progress' },
   { value: 'info', label: 'Information Update' },
-  { value: 'resolved', label: 'Mark Resolved' },
-  { value: 'closed', label: 'Close Complaint' },
+  { value: 'resolved', label: 'Mark Resolved (starts 7-day verification)' },
+  { value: 'closed', label: 'Close Complaint (administrative close)' },
 ] as const;
 
 const STATUSES = [
   { value: 'assigned', label: 'Assigned' },
   { value: 'in_progress', label: 'In Progress' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'closed', label: 'Closed' },
+  { value: 'closed', label: 'Closed (administrative)' },
 ] as const;
+// Note: 'resolved' triggers pending_verification automatically — not shown here
 
 const updateSchema = z.object({
   message: z.string().min(5, 'Message must be at least 5 characters').max(2000),

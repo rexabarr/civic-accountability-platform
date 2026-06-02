@@ -11,5 +11,6 @@ router.get('/track/:caseNumber', complaintsController.trackComplaint);
 // Authenticated
 router.post('/complaints', requireAuth, complaintsController.submitComplaint);
 router.get('/complaints', requireAuth, complaintsController.myComplaints);
+router.post('/complaints/:complaintId/dispute', requireAuth, complaintsController.disputeComplaint);
 
 export default router;

@@ -22,6 +22,10 @@ export interface Complaint {
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
+  verification_deadline: string | null;
+  dispute_count: number;
+  is_owner: boolean;
+  can_dispute: boolean;
   complaint_type: { name: string; icon_emoji: string | null };
   address: { street_address: string; city: string; state: string; zip_code: string };
   updates: ComplaintUpdate[];
@@ -56,6 +60,7 @@ export const STATUS_COLORS: Record<string, string> = {
   submitted: 'bg-blue-100 text-blue-800',
   assigned: 'bg-purple-100 text-purple-800',
   in_progress: 'bg-yellow-100 text-yellow-800',
+  pending_verification: 'bg-orange-100 text-orange-800',
   resolved: 'bg-green-100 text-green-800',
   closed: 'bg-gray-100 text-gray-800',
 };
@@ -64,6 +69,7 @@ export const STATUS_LABELS: Record<string, string> = {
   submitted: 'Submitted',
   assigned: 'Assigned',
   in_progress: 'In Progress',
+  pending_verification: 'Awaiting Verification',
   resolved: 'Resolved',
   closed: 'Closed',
 };

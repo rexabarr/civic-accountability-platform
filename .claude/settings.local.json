@@ -35,7 +35,13 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('JWT OK:', bool\\(d.get\\('accessToken'\\)\\)\\)\")",
       "Bash(node_modules/.bin/tsx src/scripts/seedDemoComplaints.ts)",
       "Bash(python3 -c ' *)",
-      "Bash(curl -s http://localhost:3000/api/leaderboard)"
+      "Bash(curl -s http://localhost:3000/api/leaderboard)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
     ]
   }
 }

@@ -110,11 +110,13 @@ model Complaint {
   public_tracking_url String?
   is_public           Boolean  @default(true)
 
-  dept_notified_at DateTime?
-  reps_notified_at DateTime?
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
-  resolved_at      DateTime?
+  dept_notified_at      DateTime?
+  reps_notified_at      DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  resolved_at           DateTime?
+  verification_deadline DateTime?  // set when status = pending_verification
+  dispute_count         Int        @default(0)
 
   updates ComplaintUpdate[]
 

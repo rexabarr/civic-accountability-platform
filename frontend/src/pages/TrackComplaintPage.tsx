@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import { useTrackComplaint } from '../hooks/useComplaints';
+import { format, formatDistanceToNow } from 'date-fns';
+import { useTrackComplaint, useDisputeResolution } from '../hooks/useComplaints';
 import { StatusBadge, SeverityBadge } from '../components/StatusBadge';
 
 export default function TrackComplaintPage() {
@@ -12,7 +12,9 @@ export default function TrackComplaintPage() {
   const [searchInput, setSearchInput] = useState('');
 
   const { data: complaint, isLoading, error } = useTrackComplaint(caseNumber ?? '');
+  const dispute = useDisputeResolution(caseNumber ?? '');
   const [copied, setCopied] = useState(false);
+  const [disputeConfirm, setDisputeConfirm] = useState(false);
 
   const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareText = complaint
@@ -143,6 +145,77 @@ export default function TrackComplaintPage() {
                 )}
               </div>
             </div>
+
+            {/* Pending verification banner */}
+            {complaint.status === 'pending_verification' && (
+              <div className="card border-orange-200 bg-orange-50">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl flex-shrink-0">⏳</span>
+                  <div className="flex-1">
+                    <p className="font-bold text-orange-800">Awaiting Independent Verification</p>
+                    <p className="text-sm text-orange-700 mt-1">
+                      The assigned official has marked this complaint as resolved. If no dispute is
+                      filed, it will automatically close in{' '}
+                      <strong>
+                        {complaint.verification_deadline
+                          ? formatDistanceToNow(new Date(complaint.verification_deadline))
+                          : '7 days'}
+                      </strong>
+                      .
+                    </p>
+                    {complaint.can_dispute && (
+                      <div className="mt-3">
+                        {!disputeConfirm ? (
+                          <button
+                            onClick={() => setDisputeConfirm(true)}
+                            className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-700 transition-colors"
+                          >
+                            🚫 This is NOT fixed — Dispute Resolution
+                          </button>
+                        ) : (
+                          <div className="bg-white rounded-lg p-4 border border-orange-300 space-y-3">
+                            <p className="text-sm font-medium text-gray-800">
+                              Are you sure? This will reopen the complaint and notify the responsible officials.
+                              <strong> You can only dispute once.</strong>
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => dispute.mutate(complaint.id)}
+                                disabled={dispute.isPending}
+                                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+                              >
+                                {dispute.isPending ? 'Filing dispute…' : 'Yes, reopen this complaint'}
+                              </button>
+                              <button
+                                onClick={() => setDisputeConfirm(false)}
+                                className="text-sm text-gray-500 px-4 py-2 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!complaint.can_dispute && complaint.is_owner && (
+                      <p className="text-xs text-orange-600 mt-2 italic">
+                        {complaint.dispute_count > 0
+                          ? 'You have already disputed this complaint.'
+                          : 'The verification window has closed.'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Reopened by third party notice */}
+            {complaint.dispute_count > 0 && complaint.status === 'in_progress' && (
+              <div className="card border-yellow-200 bg-yellow-50 text-sm text-yellow-800">
+                🔁 <strong>This complaint was reopened</strong> — a previous resolution was disputed.
+                Officials are required to address it again.
+              </div>
+            )}
 
             {/* Timeline */}
             <div className="card">

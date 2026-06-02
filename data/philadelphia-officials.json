@@ -1,8 +1,8 @@
 {
   "complaint_types": [
     {
-      "name": "Pothole",
-      "description": "Holes or cracks in the road surface",
+      "name": "Potholes & Major Cracks",
+      "description": "Potholes and major cracks in the street",
       "category": "street_infrastructure",
       "icon_emoji": "🕳️",
       "primary_department": "Department of Streets",

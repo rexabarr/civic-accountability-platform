@@ -57,3 +57,15 @@ export function useTrackComplaint(caseNumber: string) {
     retry: false,
   });
 }
+
+export function useDisputeResolution(caseNumber: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (complaintId: string) =>
+      api.post(`/api/complaints/${complaintId}/dispute`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['complaint', caseNumber] });
+      qc.invalidateQueries({ queryKey: ['my-complaints'] });
+    },
+  });
+}

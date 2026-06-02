@@ -151,12 +151,20 @@ export async function postStaffUpdate(
   });
 
   if (newStatus && newStatus !== complaint.status) {
+    // When an official marks something "resolved", it enters a 7-day verification
+    // window instead of going directly to resolved. This prevents self-certification.
+    const actualStatus = newStatus === 'resolved' ? 'pending_verification' : newStatus;
+    const verificationDeadline =
+      newStatus === 'resolved'
+        ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        : null;
+
     await prisma.complaint.update({
       where: { id: complaintId },
       data: {
-        status: newStatus,
-        resolved_at:
-          newStatus === 'resolved' || newStatus === 'closed' ? new Date() : complaint.resolved_at,
+        status: actualStatus,
+        resolved_at: newStatus === 'closed' ? new Date() : complaint.resolved_at,
+        verification_deadline: verificationDeadline,
       },
     });
   }
