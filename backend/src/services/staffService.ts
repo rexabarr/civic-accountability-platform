@@ -3,6 +3,7 @@ import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { generateToken } from '../utils/crypto.js';
 import { env } from '../utils/env.js';
+import { sendVerificationNotification } from './emailService.js';
 
 const GOV_DOMAINS = ['.gov', '.phila.gov', '.state.pa.us', '.edu']; // .edu for testing
 
@@ -167,6 +168,33 @@ export async function postStaffUpdate(
         verification_deadline: verificationDeadline,
       },
     });
+
+    // Notify the original complainant that a 7-day verification window has opened
+    if (newStatus === 'resolved' && verificationDeadline) {
+      const fullComplaint = await prisma.complaint.findUnique({
+        where: { id: complaintId },
+        include: {
+          user: { select: { name: true, email: true } },
+          complaint_type: { select: { name: true } },
+          address: { select: { street_address: true, city: true, state: true, zip_code: true } },
+        },
+      });
+
+      if (fullComplaint?.user?.email) {
+        const trackingUrl = `${env.FRONTEND_URL ?? 'http://localhost:5173'}/track/${fullComplaint.case_number}`;
+        sendVerificationNotification({
+          caseNumber: fullComplaint.case_number,
+          complaintTitle: fullComplaint.title,
+          complaintType: fullComplaint.complaint_type.name,
+          address: `${fullComplaint.address.street_address}, ${fullComplaint.address.city}, ${fullComplaint.address.state} ${fullComplaint.address.zip_code}`,
+          officialMessage: message,
+          verificationDeadline,
+          trackingUrl,
+          residentName: fullComplaint.user.name,
+          residentEmail: fullComplaint.user.email,
+        });
+      }
+    }
   }
 
   return update;
