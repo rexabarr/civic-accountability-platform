@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci && npm run build && npx prisma generate && npx prisma migrate deploy && node dist/scripts/seed.js"
+buildCommand = "npm run build && npx prisma generate && npx prisma migrate deploy && node dist/scripts/seed.js"
 
 [deploy]
 startCommand = "node dist/index.js"
