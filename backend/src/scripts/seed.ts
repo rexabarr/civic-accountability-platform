@@ -11,7 +11,7 @@ async function main() {
   console.log('Seeding database...');
 
   // Complaint types from JSON
-  const dataPath = join(__dirname, '../../../data/philadelphia-officials.json');
+  const dataPath = join(__dirname, '../../data/philadelphia-officials.json');
   const seedData = JSON.parse(readFileSync(dataPath, 'utf-8')) as {
     complaint_types: Array<{
       name: string;
