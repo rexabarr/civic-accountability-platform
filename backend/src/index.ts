@@ -12,6 +12,10 @@ import complaintsRouter from './routes/complaints.js';
 import leaderboardRouter from './routes/leaderboard.js';
 import staffRouter from './routes/staff.js';
 import adminRouter from './routes/admin.js';
+import cronRouter from './routes/cron.js';
+import uploadRouter from './routes/upload.js';
+import aiRouter from './routes/ai.js';
+import officialRouter from './routes/official.js';
 
 const app = express();
 
@@ -19,6 +23,10 @@ app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
+
+app.get('/', (_req, res) => {
+  res.redirect(env.FRONTEND_URL);
+});
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -30,6 +38,10 @@ app.use('/api', complaintsRouter);
 app.use('/api', leaderboardRouter);
 app.use('/api', staffRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/cron', cronRouter);
+app.use('/api', uploadRouter);
+app.use('/api/complaints', aiRouter);
+app.use('/api/official', officialRouter);
 
 app.use(notFound);
 app.use(errorHandler);

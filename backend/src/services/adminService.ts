@@ -1,5 +1,8 @@
 import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { logAdminAction, getAuditLogs } from './auditService.js';
+
+export { getAuditLogs };
 
 export async function listPendingStaff() {
   return prisma.staffAccount.findMany({
@@ -9,22 +12,44 @@ export async function listPendingStaff() {
   });
 }
 
-export async function approveStaff(staffId: string) {
-  const staff = await prisma.staffAccount.findUnique({ where: { id: staffId } });
+export async function approveStaff(staffId: string, actingAdminId?: string, actingAdminEmail?: string) {
+  const staff = await prisma.staffAccount.findUnique({
+    where: { id: staffId },
+    include: { user: { select: { name: true, email: true } } },
+  });
   if (!staff) throw new AppError(404, 'Staff account not found');
-  return prisma.staffAccount.update({
+  const result = await prisma.staffAccount.update({
     where: { id: staffId },
     data: { email_verified: true },
     include: { user: { select: { name: true, email: true } } },
   });
+  if (actingAdminId && actingAdminEmail) {
+    logAdminAction({
+      adminId: actingAdminId,
+      adminName: actingAdminEmail,
+      action: 'staff_approved',
+      entityId: staffId,
+      details: { staffName: staff.user.name, staffEmail: staff.user.email },
+    }).catch(() => {});
+  }
+  return result;
 }
 
-export async function rejectStaff(staffId: string) {
+export async function rejectStaff(staffId: string, actingAdminId?: string, actingAdminEmail?: string) {
   const staff = await prisma.staffAccount.findUnique({
     where: { id: staffId },
     include: { user: true },
   });
   if (!staff) throw new AppError(404, 'Staff account not found');
+  if (actingAdminId && actingAdminEmail) {
+    logAdminAction({
+      adminId: actingAdminId,
+      adminName: actingAdminEmail,
+      action: 'staff_rejected',
+      entityId: staffId,
+      details: { staffName: staff.user.name, staffEmail: staff.user.email },
+    }).catch(() => {});
+  }
   await prisma.staffAccount.delete({ where: { id: staffId } });
   await prisma.user.delete({ where: { id: staff.user_id } });
   return { message: 'Staff account rejected and removed' };
@@ -72,10 +97,22 @@ export async function updateOfficial(
     office_address?: string;
     website?: string;
   },
+  actingAdminId?: string,
+  actingAdminEmail?: string,
 ) {
   const official = await prisma.electedOfficial.findUnique({ where: { id } });
   if (!official) throw new AppError(404, 'Official not found');
-  return prisma.electedOfficial.update({ where: { id }, data });
+  const result = await prisma.electedOfficial.update({ where: { id }, data });
+  if (actingAdminId && actingAdminEmail) {
+    logAdminAction({
+      adminId: actingAdminId,
+      adminName: actingAdminEmail,
+      action: 'official_updated',
+      entityId: id,
+      details: { officialName: official.name, changes: data },
+    }).catch(() => {});
+  }
+  return result;
 }
 
 export async function getDashboardStats() {

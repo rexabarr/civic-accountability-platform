@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useForm } from 'react-hook-form';
@@ -9,6 +9,7 @@ import { useLogout } from '../hooks/useAuth';
 import { useStaffProfile, useStaffComplaints, usePostStaffUpdate } from '../hooks/useStaff';
 import { StatusBadge } from '../components/StatusBadge';
 import type { Complaint } from '../types/complaint';
+import api from '../utils/api';
 
 const UPDATE_TYPES = [
   { value: 'response', label: 'Official Response' },
@@ -34,6 +35,15 @@ const updateSchema = z.object({
 
 type UpdateForm = z.infer<typeof updateSchema>;
 
+async function uploadImageToServer(file: File): Promise<string> {
+  const form = new FormData();
+  form.append('image', file);
+  const res = await api.post<{ url: string }>('/api/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data.url;
+}
+
 function UpdateModal({
   complaint,
   onClose,
@@ -42,17 +52,39 @@ function UpdateModal({
   onClose: () => void;
 }) {
   const postUpdate = usePostStaffUpdate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadedUrl, setUploadedUrl] = useState('');
+
   const {
     register,
     handleSubmit,
     formState: { errors },
     watch,
+    setValue,
   } = useForm<UpdateForm>({
     resolver: zodResolver(updateSchema),
     defaultValues: { updateType: 'response' },
   });
 
   const updateType = watch('updateType');
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError('');
+    setUploading(true);
+    try {
+      const url = await uploadImageToServer(file);
+      setUploadedUrl(url);
+      setValue('proofImageUrl', url);
+    } catch {
+      setUploadError('Upload failed. You can paste an image URL instead.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function onSubmit(data: UpdateForm) {
     await postUpdate.mutateAsync({
@@ -110,12 +142,33 @@ function UpdateModal({
           </div>
 
           <div>
-            <label className="label">Proof image URL (optional)</label>
+            <label className="label">Proof image (optional)</label>
+            <div className="flex gap-2 items-center mb-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="btn-secondary text-sm py-1.5 px-3"
+              >
+                {uploading ? 'Uploading…' : 'Upload image'}
+              </button>
+              {uploadedUrl && (
+                <span className="text-green-600 text-xs font-medium">✓ Image uploaded</span>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
             <input
               {...register('proofImageUrl')}
-              className="input-field"
-              placeholder="https://example.com/image.jpg"
+              className="input-field text-sm"
+              placeholder="Or paste image URL: https://example.com/image.jpg"
             />
+            {uploadError && <p className="form-error">{uploadError}</p>}
             {errors.proofImageUrl && <p className="form-error">{errors.proofImageUrl.message}</p>}
           </div>
 
@@ -129,7 +182,7 @@ function UpdateModal({
             <button type="button" onClick={onClose} className="btn-secondary flex-1">
               Cancel
             </button>
-            <button type="submit" disabled={postUpdate.isPending} className="btn-primary flex-1">
+            <button type="submit" disabled={postUpdate.isPending || uploading} className="btn-primary flex-1">
               {postUpdate.isPending ? 'Posting…' : 'Post Update'}
             </button>
           </div>
@@ -210,6 +263,9 @@ export default function StaffDashboardPage() {
           <span className="text-sm text-blue-200 hidden sm:block">{user?.name}</span>
           <Link to="/dashboard" className="btn-secondary text-sm py-1 px-3 text-blue-900">
             Resident View
+          </Link>
+          <Link to="/admin-settings" className="btn-secondary text-sm py-1 px-3">
+            Settings
           </Link>
           <button onClick={logout} className="btn-secondary text-sm py-1 px-3">
             Sign out

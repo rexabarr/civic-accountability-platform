@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
-import { StatusBadge, SeverityBadge } from './StatusBadge';
+import { StatusBadge, PriorityBadge } from './StatusBadge';
 import type { Complaint } from '../types/complaint';
 
 export default function ComplaintCard({ complaint }: { complaint: Complaint }) {
@@ -20,7 +20,7 @@ export default function ComplaintCard({ complaint }: { complaint: Complaint }) {
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
           <StatusBadge status={complaint.status} />
-          <SeverityBadge severity={complaint.severity} />
+          <PriorityBadge priority={complaint.priority ?? 'pending'} />
         </div>
       </div>
 

@@ -11,9 +11,11 @@ import LeaderboardPage from './pages/LeaderboardPage';
 import StaffRegisterPage from './pages/StaffRegisterPage';
 import StaffDashboardPage from './pages/StaffDashboardPage';
 import AdminPage from './pages/AdminPage';
+import OfficialDashboardPage from './pages/OfficialDashboardPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import SettingsPage from './pages/SettingsPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -32,6 +34,13 @@ function StaffRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
   if (user.userType !== 'rep_staff' && user.userType !== 'admin') return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
+function OfficialRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.userType !== 'official' && user.userType !== 'admin') return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -86,6 +95,22 @@ export default function App() {
           <ProtectedRoute>
             <SettingsPage />
           </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin-settings"
+        element={
+          <ProtectedRoute>
+            <AdminSettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/official"
+        element={
+          <OfficialRoute>
+            <OfficialDashboardPage />
+          </OfficialRoute>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

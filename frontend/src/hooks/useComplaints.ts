@@ -15,7 +15,7 @@ interface SubmitPayload {
   address: string;
   title: string;
   description: string;
-  severity: string;
+  severity?: string;  // optional — removed from submission form; AI assigns priority
   isPublic: boolean;
 }
 

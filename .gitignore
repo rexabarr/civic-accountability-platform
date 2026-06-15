@@ -37,3 +37,14 @@ Thumbs.db
 .yarn/cache
 .yarn/unplugged
 .pnp.*
+
+# Log files
+*.log
+
+# Local dev scripts and artifacts
+backend/verify-user.ts
+backend/.staff_token.json
+backend/.staff_complaints.json
+
+# Claude Code local settings
+.claude/settings.local.json

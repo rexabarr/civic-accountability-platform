@@ -1,12 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 
 export class AppError extends Error {
+  public meta?: Record<string, unknown>;
   constructor(
     public statusCode: number,
     message: string,
+    meta?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'AppError';
+    this.meta = meta;
   }
 }
 
@@ -17,7 +20,7 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({ error: err.message });
+    res.status(err.statusCode).json({ error: err.message, ...(err.meta ?? {}) });
     return;
   }
 

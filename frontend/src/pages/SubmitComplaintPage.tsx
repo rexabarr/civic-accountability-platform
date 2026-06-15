@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { clsx } from 'clsx';
 import { useComplaintTypes, useSubmitComplaint } from '../hooks/useComplaints';
 import { useGeocode } from '../hooks/useGeocode';
+import { useEnhanceDescription } from '../hooks/useEnhanceDescription';
 import OfficialCard from '../components/OfficialCard';
+import DescriptionEnhancementModal from '../components/DescriptionEnhancementModal';
 import type { ComplaintType } from '../types/complaint';
 
 const STEPS = ['Issue Type', 'Location & Details', 'Review'];
@@ -15,7 +17,6 @@ const detailsSchema = z.object({
   address: z.string().min(5, 'Enter a full address'),
   title: z.string().min(5, 'Title must be at least 5 characters').max(200),
   description: z.string().min(10, 'Please describe the problem in at least 10 characters').max(2000),
-  severity: z.enum(['low', 'moderate', 'high', 'critical']),
   isPublic: z.boolean(),
 });
 
@@ -25,10 +26,14 @@ export default function SubmitComplaintPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [selectedType, setSelectedType] = useState<ComplaintType | null>(null);
+  const [showEnhanceModal, setShowEnhanceModal] = useState(false);
+  const [enhancedData, setEnhancedData] = useState<{ original: string; improved: string; summary: string } | null>(null);
+  const [pendingSubmit, setPendingSubmit] = useState<any>(null);
 
   const { data: complaintTypes, isLoading: typesLoading } = useComplaintTypes();
   const geocode = useGeocode();
   const submit = useSubmitComplaint();
+  const enhance = useEnhanceDescription();
 
   const {
     register,
@@ -38,7 +43,7 @@ export default function SubmitComplaintPage() {
     formState: { errors },
   } = useForm<DetailsForm>({
     resolver: zodResolver(detailsSchema),
-    defaultValues: { severity: 'moderate', isPublic: true },
+    defaultValues: { isPublic: true },
   });
 
   const addressValue = watch('address');
@@ -58,14 +63,39 @@ export default function SubmitComplaintPage() {
   const onSubmit = (data: DetailsForm) => {
     if (!selectedType) return;
 
+    // Store the form data for later submission
+    setPendingSubmit(data);
+
+    // Try to enhance the description
+    enhance.mutate(data.description, {
+      onSuccess: (result) => {
+        // Only show modal if improvements were actually made
+        if (result.improved !== data.description) {
+          setEnhancedData(result);
+          setShowEnhanceModal(true);
+        } else {
+          // No improvements, submit directly
+          submitComplaint(data.description);
+        }
+      },
+      onError: (err) => {
+        // Log so we can see what went wrong, then submit with original
+        console.warn('AI enhancement failed:', err);
+        submitComplaint(data.description);
+      },
+    });
+  };
+
+  const submitComplaint = (finalDescription: string) => {
+    if (!selectedType || !pendingSubmit) return;
+
     submit.mutate(
       {
         complaintTypeId: selectedType.id,
-        address: data.address,
-        title: data.title,
-        description: data.description,
-        severity: data.severity,
-        isPublic: data.isPublic,
+        address: pendingSubmit.address,
+        title: pendingSubmit.title,
+        description: finalDescription,
+        isPublic: pendingSubmit.isPublic,
       },
       {
         onSuccess: (result) => {
@@ -229,34 +259,6 @@ export default function SubmitComplaintPage() {
               {errors.description && <p className="form-error">{errors.description.message}</p>}
             </div>
 
-            {/* Severity */}
-            <div>
-              <label className="form-label">Severity</label>
-              <div className="grid grid-cols-4 gap-2">
-                {(['low', 'moderate', 'high', 'critical'] as const).map((sev) => {
-                  const colors = {
-                    low: 'border-green-300 bg-green-50 text-green-800',
-                    moderate: 'border-yellow-300 bg-yellow-50 text-yellow-800',
-                    high: 'border-orange-300 bg-orange-50 text-orange-800',
-                    critical: 'border-red-300 bg-red-50 text-red-800',
-                  };
-                  const selected = watch('severity') === sev;
-                  return (
-                    <label
-                      key={sev}
-                      className={clsx(
-                        'border-2 rounded-lg p-2 text-center text-sm font-medium cursor-pointer transition-all',
-                        selected ? colors[sev] + ' border-current' : 'border-gray-200 bg-white text-gray-500',
-                      )}
-                    >
-                      <input {...register('severity')} type="radio" value={sev} className="sr-only" />
-                      {sev.charAt(0).toUpperCase() + sev.slice(1)}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
             {/* Public toggle */}
             <label className="flex items-center gap-3 cursor-pointer">
               <input {...register('isPublic')} type="checkbox" className="w-4 h-4 rounded" />
@@ -293,13 +295,16 @@ export default function SubmitComplaintPage() {
               {[
                 { label: 'Address', value: getValues('address') },
                 { label: 'Title', value: getValues('title') },
-                { label: 'Severity', value: getValues('severity').charAt(0).toUpperCase() + getValues('severity').slice(1) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex gap-3 text-sm">
                   <span className="text-gray-500 w-20 flex-shrink-0">{label}</span>
                   <span className="text-gray-900 font-medium">{value}</span>
                 </div>
               ))}
+              <div className="flex gap-3 text-sm">
+                <span className="text-gray-500 w-20 flex-shrink-0">Priority</span>
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">AI-assigned after review</span>
+              </div>
 
               <div className="text-sm">
                 <span className="text-gray-500 block mb-1">Description</span>
@@ -318,11 +323,23 @@ export default function SubmitComplaintPage() {
               </div>
             </div>
 
-            {submit.error && (
-              <div className="alert-error">
-                {(submit.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Submission failed. Please try again.'}
-              </div>
-            )}
+            {submit.error && (() => {
+              const errData = (submit.error as { response?: { data?: { error?: string; category?: string; guidance?: string } } })?.response?.data;
+              const isScreened = errData?.category && errData.category !== 'in_scope';
+              return isScreened ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+                  <p className="font-semibold text-amber-900">⚠️ We couldn't accept this complaint</p>
+                  <p className="text-sm text-amber-800">{errData?.error}</p>
+                  {errData?.guidance && (
+                    <p className="text-sm text-amber-700 mt-1"><span className="font-medium">Where to go:</span> {errData.guidance}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="alert-error">
+                  {errData?.error ?? 'Submission failed. Please try again.'}
+                </div>
+              );
+            })()}
 
             <div className="flex gap-3">
               <button onClick={() => setStep(1)} className="btn-secondary flex-1">
@@ -330,15 +347,33 @@ export default function SubmitComplaintPage() {
               </button>
               <button
                 onClick={handleSubmit(onSubmit)}
-                disabled={submit.isPending}
+                disabled={submit.isPending || enhance.isPending}
                 className="btn-primary flex-1"
               >
-                {submit.isPending ? 'Submitting…' : 'Submit Complaint'}
+                {enhance.isPending
+                  ? '✨ Checking description…'
+                  : submit.isPending
+                    ? 'Submitting…'
+                    : 'Submit Complaint'}
               </button>
             </div>
           </div>
         )}
       </main>
+
+      {/* AI Enhancement Modal */}
+      {showEnhanceModal && enhancedData && (
+        <DescriptionEnhancementModal
+          original={enhancedData.original}
+          improved={enhancedData.improved}
+          summary={enhancedData.summary}
+          isLoading={submit.isPending}
+          onAccept={(description) => {
+            setShowEnhanceModal(false);
+            submitComplaint(description);
+          }}
+        />
+      )}
     </div>
   );
 }

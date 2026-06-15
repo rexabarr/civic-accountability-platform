@@ -4,6 +4,7 @@ import { generateCaseNumber } from '../utils/caseNumber.js';
 import { geocodeAndGetDistricts } from './geocodingService.js';
 import { sendComplaintNotifications, sendDisputeNotification, sendAutoResolvedNotification } from './emailService.js';
 import { env } from '../utils/env.js';
+import { scoreUrgency, screenComplaint } from './aiService.js';
 
 const VERIFICATION_DAYS = 7;      // days before pending_verification auto-closes
 const DUPLICATE_WINDOW_DAYS = 60; // days to look back for duplicate resolved complaints
@@ -14,15 +15,101 @@ interface SubmitComplaintInput {
   address: string;
   title: string;
   description: string;
-  severity: string;
+  severity?: string;  // optional — kept for API compat; not used in priority system
   isPublic: boolean;
 }
 
+// ── Priority recalculation ─────────────────────────────────────────────────
+// Distributes priority labels across all open complaints by percentile rank:
+//   Top 20%  → critical
+//   Next 20% → high
+//   Next 30% → moderate
+//   Bottom 30% → routine
+// Complaints with no urgency_score are treated as bottom of the pool.
+export async function recalculatePriorities(): Promise<void> {
+  const open = await prisma.complaint.findMany({
+    where: { status: { notIn: ['resolved', 'closed', 'rejected'] } },
+    orderBy: [{ urgency_score: 'desc' }, { created_at: 'asc' }],
+    select: { id: true, urgency_score: true },
+  });
+
+  const n = open.length;
+  if (n === 0) return;
+
+  const updates: Array<{ id: string; priority: string }> = open.map((c, i) => {
+    const pct = i / n;
+    let priority: string;
+    if (pct < 0.2) priority = 'critical';
+    else if (pct < 0.4) priority = 'high';
+    else if (pct < 0.7) priority = 'moderate';
+    else priority = 'routine';
+    return { id: c.id, priority };
+  });
+
+  // Group by priority to minimise DB round-trips
+  const byPriority: Record<string, string[]> = {};
+  for (const { id, priority } of updates) {
+    (byPriority[priority] ??= []).push(id);
+  }
+  await Promise.all(
+    Object.entries(byPriority).map(([priority, ids]) =>
+      prisma.complaint.updateMany({ where: { id: { in: ids } }, data: { priority } }),
+    ),
+  );
+}
+
+// ── Status log helper ──────────────────────────────────────────────────────
+async function logStatusChange(
+  complaintId: string,
+  fromStatus: string,
+  toStatus: string,
+  actorId: string,
+  actorName: string,
+  actorType: 'resident' | 'staff' | 'admin' | 'official' | 'system',
+  note?: string,
+) {
+  await prisma.complaintStatusLog.create({
+    data: {
+      complaint_id: complaintId,
+      changed_by: actorId,
+      changed_by_name: actorName,
+      changed_by_type: actorType,
+      from_status: fromStatus,
+      to_status: toStatus,
+      note,
+    },
+  });
+}
+
+// ── Submit complaint ───────────────────────────────────────────────────────
 export async function submitComplaint(input: SubmitComplaintInput) {
-  const { userId, complaintTypeId, address, title, description, severity, isPublic } = input;
+  const { userId, complaintTypeId, address, title, description, isPublic } = input;
 
   const complaintType = await prisma.complaintType.findUnique({ where: { id: complaintTypeId } });
   if (!complaintType) throw new AppError(400, 'Invalid complaint type');
+
+  // ── AI Screening ── block out-of-scope complaints before saving anything
+  const screen = await screenComplaint(title, description, complaintType.name);
+  if (!screen.allowed) {
+    // Store for admin review (never posted publicly)
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    await prisma.rejectedSubmission.create({
+      data: {
+        title,
+        description,
+        complaint_type: complaintType.name,
+        address,
+        submitter_email: user?.email ?? 'unknown',
+        rejection_reason: screen.reason ?? 'Out of scope',
+        rejection_category: screen.category ?? 'other_out_of_scope',
+        ai_reasoning: screen.reasoning,
+      },
+    }).catch(() => {}); // fire-and-forget; don't fail submission if this fails
+    throw new AppError(422, screen.reason ?? 'This complaint does not fall within the scope of this platform.', {
+      category: screen.category,
+      guidance: screen.guidance,
+    });
+  }
 
   const { address: geo, districts } = await geocodeAndGetDistricts(address);
 
@@ -54,10 +141,6 @@ export async function submitComplaint(input: SubmitComplaintInput) {
   }
 
   // ── Duplicate detection ──────────────────────────────────────────────────
-  // If a DIFFERENT user submits the same type at the same address within
-  // DUPLICATE_WINDOW_DAYS of resolution → auto-reopen the old complaint.
-  // This is the neutral third-party verification: an independent resident
-  // reporting the same issue proves it wasn't actually fixed.
   const windowStart = new Date(Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const existingResolved = await prisma.complaint.findFirst({
     where: {
@@ -65,13 +148,12 @@ export async function submitComplaint(input: SubmitComplaintInput) {
       complaint_type_id: complaintTypeId,
       status: { in: ['resolved', 'pending_verification'] },
       resolved_at: { gte: windowStart },
-      user_id: { not: userId }, // only triggers for a DIFFERENT resident
+      user_id: { not: userId },
     },
     orderBy: { resolved_at: 'desc' },
   });
 
   if (existingResolved) {
-    // Reopen the old complaint instead of creating a duplicate
     await prisma.complaint.update({
       where: { id: existingResolved.id },
       data: {
@@ -90,6 +172,15 @@ export async function submitComplaint(input: SubmitComplaintInput) {
         visibility: 'public',
       },
     });
+    await logStatusChange(
+      existingResolved.id,
+      existingResolved.status,
+      'in_progress',
+      userId,
+      'system (duplicate report)',
+      'system',
+      'Reopened by independent resident report',
+    );
     return {
       id: existingResolved.id,
       case_number: existingResolved.case_number,
@@ -99,7 +190,7 @@ export async function submitComplaint(input: SubmitComplaintInput) {
       assigned_department: existingResolved.assigned_department,
       officials_notified: 0,
       created_at: existingResolved.created_at,
-      reopened: true, // flag for the frontend to show a special message
+      reopened: true,
     };
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -124,7 +215,7 @@ export async function submitComplaint(input: SubmitComplaintInput) {
       address_id: addressRecord.id,
       title,
       description,
-      severity,
+      severity: 'pending',       // legacy field — AI priority replaces self-reported severity
       status: 'submitted',
       assigned_department: complaintType.primary_department,
       case_number: caseNumber!,
@@ -136,6 +227,9 @@ export async function submitComplaint(input: SubmitComplaintInput) {
     include: { complaint_type: true, address: true },
   });
 
+  // Log initial submitted status
+  await logStatusChange(complaint.id, '', 'submitted', userId, user.email, 'resident');
+
   await prisma.complaintUpdate.create({
     data: {
       complaint_id: complaint.id,
@@ -146,6 +240,17 @@ export async function submitComplaint(input: SubmitComplaintInput) {
     },
   });
 
+  // ── AI urgency scoring (fire-and-forget style — don't block response) ──
+  scoreUrgency(title, description, complaintType.name)
+    .then(async ({ score }) => {
+      await prisma.complaint.update({
+        where: { id: complaint.id },
+        data: { urgency_score: score },
+      });
+      await recalculatePriorities();
+    })
+    .catch(() => {}); // scoring failure never blocks submission
+
   const fullAddress = `${geo.street_address}, ${geo.city}, ${geo.state} ${geo.zip_code}`;
   sendComplaintNotifications({
     caseNumber: caseNumber!,
@@ -153,7 +258,7 @@ export async function submitComplaint(input: SubmitComplaintInput) {
     complaintType: complaintType.name,
     description,
     address: fullAddress,
-    severity,
+    severity: 'pending',
     submittedBy: user.email,
     trackingUrl,
     department: complaintType.primary_department,
@@ -187,7 +292,12 @@ async function maybeAutoResolve(complaintId: string) {
   ) {
     await prisma.complaint.update({
       where: { id: complaintId },
-      data: { status: 'resolved', resolved_at: new Date() },
+      data: {
+        status: 'resolved',
+        resolved_at: new Date(),
+        resolved_by_type: 'auto',
+        resolved_by_user_id: null,
+      },
     });
     await prisma.complaintUpdate.create({
       data: {
@@ -198,8 +308,15 @@ async function maybeAutoResolve(complaintId: string) {
         visibility: 'public',
       },
     });
+    await logStatusChange(
+      complaintId,
+      'pending_verification',
+      'resolved',
+      'system',
+      'Auto-resolve (7-day window expired)',
+      'system',
+    );
 
-    // Notify the original complainant that their complaint was auto-resolved
     const user = await prisma.user.findUnique({
       where: { id: complaint.user_id },
       select: { name: true, email: true },
@@ -213,11 +330,31 @@ async function maybeAutoResolve(complaintId: string) {
         trackingUrl: `${env.FRONTEND_URL}/track/${complaint.case_number}`,
       });
     }
+
+    // Recalculate priorities since pool shrank
+    recalculatePriorities().catch(() => {});
   }
 }
 
+/** Bulk-resolve all overdue pending_verification complaints. Called by cron. */
+export async function bulkAutoResolve(): Promise<{ resolved: number }> {
+  const overdue = await prisma.complaint.findMany({
+    where: {
+      status: 'pending_verification',
+      verification_deadline: { lt: new Date() },
+    },
+    select: { id: true },
+  });
+  for (const { id } of overdue) {
+    await maybeAutoResolve(id);
+  }
+  // Single recalculation after batch (maybeAutoResolve already calls it per complaint,
+  // but call once more as a safety net after all are done)
+  if (overdue.length > 0) await recalculatePriorities().catch(() => {});
+  return { resolved: overdue.length };
+}
+
 export async function getComplaintByCase(caseNumber: string, requestingUserId?: string) {
-  // First auto-advance if deadline passed
   const found = await prisma.complaint.findUnique({ where: { case_number: caseNumber } });
   if (found) await maybeAutoResolve(found.id);
 
@@ -227,6 +364,7 @@ export async function getComplaintByCase(caseNumber: string, requestingUserId?: 
       complaint_type: true,
       address: true,
       updates: { orderBy: { created_at: 'asc' } },
+      status_logs: { orderBy: { created_at: 'asc' } },
       user: { select: { name: true } },
     },
   });
@@ -236,7 +374,6 @@ export async function getComplaintByCase(caseNumber: string, requestingUserId?: 
 
   return {
     ...complaint,
-    // Tell the frontend whether the requesting user is the owner (for dispute button)
     is_owner: requestingUserId ? complaint.user_id === requestingUserId : false,
     can_dispute:
       requestingUserId === complaint.user_id &&
@@ -277,7 +414,16 @@ export async function disputeResolution(complaintId: string, userId: string) {
     },
   });
 
-  // Notify all approved staff linked to officials for this complaint's district
+  await logStatusChange(
+    complaintId,
+    'pending_verification',
+    'in_progress',
+    userId,
+    'Resident (dispute)',
+    'resident',
+    'Resident disputed resolution',
+  );
+
   const fullComplaint = await prisma.complaint.findUnique({
     where: { id: complaintId },
     include: {
@@ -288,7 +434,6 @@ export async function disputeResolution(complaintId: string, userId: string) {
 
   if (fullComplaint?.address) {
     const addr = fullComplaint.address;
-    // Find all officials whose district matches any of the address's districts
     const officials = await prisma.electedOfficial.findMany({
       where: {
         city: 'Philadelphia',

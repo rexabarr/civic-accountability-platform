@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -16,6 +16,11 @@ const schema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   SENDGRID_API_KEY: z.string().optional(),
   SENDGRID_FROM_EMAIL: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

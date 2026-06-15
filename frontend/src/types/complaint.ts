@@ -15,7 +15,9 @@ export interface Complaint {
   status: string;
   title: string;
   description: string;
-  severity: string;
+  severity: string;         // legacy field — still in DB, kept for compat
+  priority: string;         // AI-assigned: pending/routine/moderate/high/critical
+  urgency_score: number | null;
   assigned_department: string | null;
   public_tracking_url: string | null;
   is_public: boolean;
@@ -26,10 +28,24 @@ export interface Complaint {
   dispute_count: number;
   is_owner: boolean;
   can_dispute: boolean;
+  resolved_by_type: string | null;
+  resolution_credit: string | null;
   complaint_type: { name: string; icon_emoji: string | null };
   address: { street_address: string; city: string; state: string; zip_code: string };
   updates: ComplaintUpdate[];
+  status_logs?: ComplaintStatusLog[];
   user?: { name: string };
+}
+
+export interface ComplaintStatusLog {
+  id: string;
+  changed_by: string;
+  changed_by_name: string;
+  changed_by_type: string;
+  from_status: string;
+  to_status: string;
+  note: string | null;
+  created_at: string;
 }
 
 export interface ComplaintUpdate {
@@ -40,16 +56,29 @@ export interface ComplaintUpdate {
   created_at: string;
 }
 
-export type Severity = 'low' | 'moderate' | 'high' | 'critical';
+// Priority is AI-assigned at submission time, distributed by percentile
+export type Priority = 'pending' | 'routine' | 'moderate' | 'high' | 'critical';
 
-export const SEVERITY_LABELS: Record<Severity, string> = {
-  low: 'Low',
+export const PRIORITY_LABELS: Record<string, string> = {
+  pending: 'Pending Review',
+  routine: 'Routine',
   moderate: 'Moderate',
   high: 'High',
   critical: 'Critical',
 };
 
-export const SEVERITY_COLORS: Record<Severity, string> = {
+export const PRIORITY_COLORS: Record<string, string> = {
+  pending: 'bg-gray-100 text-gray-600',
+  routine: 'bg-green-100 text-green-800',
+  moderate: 'bg-yellow-100 text-yellow-800',
+  high: 'bg-orange-100 text-orange-800',
+  critical: 'bg-red-100 text-red-800',
+};
+
+// Kept for legacy compat (existing severity values in DB)
+export type Severity = 'low' | 'moderate' | 'high' | 'critical';
+export const SEVERITY_LABELS: Record<string, string> = { low: 'Low', moderate: 'Moderate', high: 'High', critical: 'Critical' };
+export const SEVERITY_COLORS: Record<string, string> = {
   low: 'bg-green-100 text-green-800',
   moderate: 'bg-yellow-100 text-yellow-800',
   high: 'bg-orange-100 text-orange-800',

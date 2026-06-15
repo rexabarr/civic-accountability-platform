@@ -34,18 +34,26 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult> {
   });
 
   if (cached) {
-    return {
-      street_address: cached.street_address,
-      city: cached.city,
-      state: cached.state,
-      zip_code: cached.zip_code,
-      latitude: Number(cached.latitude),
-      longitude: Number(cached.longitude),
-    };
+    const cachedLat = Number(cached.latitude);
+    const cachedLng = Number(cached.longitude);
+    // Skip entries that were saved with the old mock coordinates — re-geocode them
+    const isMockCoord =
+      Math.abs(cachedLat - 39.9526) < 0.001 && Math.abs(cachedLng - -75.1652) < 0.001;
+    if (!isMockCoord) {
+      return {
+        street_address: cached.street_address,
+        city: cached.city,
+        state: cached.state,
+        zip_code: cached.zip_code,
+        latitude: cachedLat,
+        longitude: cachedLng,
+      };
+    }
+    // Fall through to re-geocode with real data
   }
 
   if (!env.GOOGLE_MAPS_API_KEY) {
-    return mockGeocode(address);
+    return nominatimGeocode(address);
   }
 
   const encoded = encodeURIComponent(address);
@@ -93,17 +101,41 @@ export async function getDistricts(lat: number, lng: number): Promise<DistrictRe
   // In production this would call a proper district boundary API (e.g., Census Bureau)
   const districts = assignPhillyDistricts(lat, lng);
 
-  const officials = await prisma.electedOfficial.findMany({
-    where: {
-      city: 'Philadelphia',
-      state: 'PA',
-      OR: [
-        { title: 'city_council', district: districts.city_council ?? undefined },
-        { title: 'state_house', district: districts.state_house ?? undefined },
-        { title: 'state_senate', district: districts.state_senate ?? undefined },
-      ],
-    },
-  });
+  // Use separate queries per district type to avoid Prisma OR issues with undefined values
+  const [cityCouncilOfficials, stateHouseOfficials, stateSenateOfficials] = await Promise.all([
+    districts.city_council
+      ? prisma.electedOfficial.findMany({
+          where: {
+            city: 'Philadelphia',
+            state: 'PA',
+            title: 'city_council',
+            district: districts.city_council,
+          },
+        })
+      : Promise.resolve([]),
+    districts.state_house
+      ? prisma.electedOfficial.findMany({
+          where: {
+            city: 'Philadelphia',
+            state: 'PA',
+            title: 'state_house',
+            district: districts.state_house,
+          },
+        })
+      : Promise.resolve([]),
+    districts.state_senate
+      ? prisma.electedOfficial.findMany({
+          where: {
+            city: 'Philadelphia',
+            state: 'PA',
+            title: 'state_senate',
+            district: districts.state_senate,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const officials = [...cityCouncilOfficials, ...stateHouseOfficials, ...stateSenateOfficials];
 
   return {
     city_council_district: districts.city_council,
@@ -157,8 +189,59 @@ export async function geocodeAndGetDistricts(address: string) {
   return { address: geo, districts: districtResult };
 }
 
+async function nominatimGeocode(address: string): Promise<GeocodeResult> {
+  // Append Philadelphia context if not already present
+  const query = /philadelphia|phila\b|,\s*pa\b/i.test(address)
+    ? address
+    : `${address}, Philadelphia, PA`;
+
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=us&addressdetails=1`;
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'CivicAccountabilityPlatform/1.0' },
+    });
+
+    if (!response.ok) return mockGeocode(address);
+
+    const data = (await response.json()) as Array<{
+      lat: string;
+      lon: string;
+      display_name: string;
+      address: {
+        house_number?: string;
+        road?: string;
+        city?: string;
+        suburb?: string;
+        county?: string;
+        state?: string;
+        postcode?: string;
+      };
+    }>;
+
+    if (!data || data.length === 0) return mockGeocode(address);
+
+    const result = data[0];
+    const addr = result.address ?? {};
+
+    const streetAddress =
+      [addr.house_number, addr.road].filter(Boolean).join(' ') || address;
+
+    return {
+      street_address: streetAddress,
+      city: addr.city || addr.suburb || addr.county || 'Philadelphia',
+      state: 'PA',
+      zip_code: addr.postcode || '19107',
+      latitude: parseFloat(result.lat),
+      longitude: parseFloat(result.lon),
+    };
+  } catch {
+    return mockGeocode(address);
+  }
+}
+
 function mockGeocode(address: string): GeocodeResult {
-  // Broad St, Philadelphia rough center
+  // Broad St, Philadelphia rough center — fallback only
   return {
     street_address: address,
     city: 'Philadelphia',

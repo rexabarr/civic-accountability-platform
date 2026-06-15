@@ -1,0 +1,21 @@
+name: Auto-resolve expired complaints
+
+on:
+  schedule:
+    # Runs every day at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  auto-resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger auto-resolve endpoint
+        run: |
+          curl -s -f -X POST "${{ vars.BACKEND_URL }}/api/cron/auto-resolve" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -o response.json
+          echo "Response: $(cat response.json)"
+          # Fail the step if "resolved" key is not in the response
+          grep -q '"ok":true' response.json

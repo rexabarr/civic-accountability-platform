@@ -7,7 +7,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// user_type: resident | rep_staff | admin
+// user_type: resident | rep_staff | admin | official
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -69,10 +69,12 @@ model ElectedOfficial {
   verified_contact_person String?
   verified_contact_email  String?
   verified_contact_phone  String?
+  user_id                 String?  @unique  // linked User account (official portal)
   created_at              DateTime @default(now())
   updated_at              DateTime @updatedAt
 
   staff_accounts StaffAccount[]
+  flag_requests  OfficialFlagRequest[]
 
   @@index([title, district, city, state])
   @@index([contact_verified])
@@ -108,6 +110,15 @@ model Complaint {
   status              String   @default("submitted")
   assigned_department String?
 
+  // AI-assigned priority (replaces self-reported severity on new submissions)
+  urgency_score       Int?     // AI score 0-100 assigned at submission
+  priority            String   @default("pending")  // pending/routine/moderate/high/critical
+
+  // Resolution attribution
+  resolved_by_user_id String?
+  resolved_by_type    String?  // 'staff' | 'admin' | 'auto' | 'official'
+  resolution_credit   String?  // optional note e.g. "Rep. Lozada coordinated DPW"
+
   case_number         String   @unique
   public_tracking_url String?
   is_public           Boolean  @default(true)
@@ -120,10 +131,13 @@ model Complaint {
   verification_deadline DateTime?  // set when status = pending_verification
   dispute_count         Int        @default(0)
 
-  updates ComplaintUpdate[]
+  updates       ComplaintUpdate[]
+  status_logs   ComplaintStatusLog[]
+  flag_requests OfficialFlagRequest[]
 
   @@index([user_id])
   @@index([status])
+  @@index([priority])
   @@index([case_number])
   @@index([address_id])
   @@index([created_at])
@@ -159,4 +173,69 @@ model StaffAccount {
   verification_token         String?
   verification_token_expires DateTime?
   created_at                 DateTime  @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  admin_id   String
+  admin_name String
+  action     String
+  entity_id  String
+  details    String?
+  created_at DateTime @default(now())
+
+  @@index([admin_id])
+  @@index([created_at])
+}
+
+// Every status transition on every complaint — who did it and when
+model ComplaintStatusLog {
+  id               String    @id @default(uuid())
+  complaint_id     String
+  complaint        Complaint @relation(fields: [complaint_id], references: [id], onDelete: Cascade)
+  changed_by       String    // user_id or 'system'
+  changed_by_name  String    // display name / email
+  changed_by_type  String    // 'resident' | 'staff' | 'admin' | 'official' | 'system'
+  from_status      String
+  to_status        String
+  note             String?
+  created_at       DateTime  @default(now())
+
+  @@index([complaint_id])
+  @@index([created_at])
+}
+
+// Official-requested complaint reviews (no email tokens — officials have accounts)
+model OfficialFlagRequest {
+  id             String          @id @default(uuid())
+  complaint_id   String
+  complaint      Complaint       @relation(fields: [complaint_id], references: [id], onDelete: Cascade)
+  official_id    String
+  official       ElectedOfficial @relation(fields: [official_id], references: [id])
+  official_name  String
+  reason         String          // 'wrong_jurisdiction' | 'inaccurate' | 'personal_matter' | 'harassment' | 'other'
+  details        String?
+  status         String          @default("pending")  // pending | approved | denied
+  requested_at   DateTime        @default(now())
+  reviewed_at    DateTime?
+
+  @@index([complaint_id])
+  @@index([status])
+}
+
+// AI-screened-out submissions — stored for admin audit, never posted publicly
+model RejectedSubmission {
+  id                 String   @id @default(uuid())
+  title              String
+  description        String
+  complaint_type     String
+  address            String
+  submitter_email    String
+  rejection_reason   String
+  rejection_category String
+  ai_reasoning       String?
+  created_at         DateTime @default(now())
+
+  @@index([created_at])
+  @@index([rejection_category])
 }
