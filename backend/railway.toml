@@ -1,8 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm run build && npx prisma generate && npx prisma db push --accept-data-loss && node dist/scripts/seed.js"
+buildCommand = "npm run build && npx prisma generate"
 
 [deploy]
+preDeployCommand = "npx prisma db push --accept-data-loss && node dist/scripts/seed.js"
 startCommand = "node dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
